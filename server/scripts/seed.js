@@ -43,8 +43,9 @@ async function seed() {
 
   // 2. Seed Demo Student: Sabiha Farin
   const demoEmail = 'sabiha.farin@university.edu';
+  const defaultPassword = process.env.SEED_STUDENT_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || 'ChangeMe123!';
   const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash('Password123!', salt);
+  const passwordHash = await bcrypt.hash(defaultPassword, salt);
   const userId = generateId();
   const profileId = generateId();
 
@@ -260,7 +261,26 @@ async function seed() {
   ];
 
   writeDb(db);
-  console.log('[Seed] Demo database fully seeded with Sabiha Farin account, 8 skills, 14 evidence items, and 1 active gap analysis!');
+  console.log('[Seed] JSON database initialized with default skills catalog, demo profile, evidence, and sample gap analysis.');
+
+  // Upsert skill catalog to MongoDB if configured
+  const mongoUri = process.env.MONGODB_URI || env.MONGODB_URI;
+  if (mongoUri) {
+    try {
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
+      for (const s of DEFAULT_SKILLS) {
+        await Skill.updateOne(
+          { name: s.name },
+          { $set: { name: s.name, category: s.category, synonyms: s.synonyms, isActive: true } },
+          { upsert: true }
+        );
+      }
+      console.log('[Seed] Skill catalog synchronized to MongoDB with upsert.');
+      await mongoose.disconnect();
+    } catch (mErr) {
+      console.log(`[Seed] MongoDB sync skipped (${mErr.message}).`);
+    }
+  }
 }
 
 seed().catch(console.error);
