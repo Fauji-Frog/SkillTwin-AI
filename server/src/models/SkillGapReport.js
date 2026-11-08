@@ -93,6 +93,10 @@ const skillGapReportSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    durationMs: {
+      type: Number,
+      default: 0
+    },
     items: [gapItemSchema],
     disclaimer: {
       type: String,
