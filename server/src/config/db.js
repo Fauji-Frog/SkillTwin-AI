@@ -14,10 +14,15 @@ async function connectDB() {
     isConnected = true;
     console.log(`[Database] MongoDB connected: ${conn.connection.host}/${conn.connection.name}`);
   } catch (err) {
-    console.warn(`[Database] Warning: Could not connect to MongoDB at ${env.MONGODB_URI}: ${err.message}`);
-    console.warn(`[Database] If MongoDB is not running locally, start mongod or set MONGODB_URI to an Atlas connection string.`);
-    // Fallback store flag for local development if MongoDB is absent
-    process.env.DB_FALLBACK = 'true';
+    console.error(`[Database] Connection Error: Could not connect to MongoDB at ${env.MONGODB_URI}: ${err.message}`);
+    const allowFallback = process.env.ALLOW_JSON_FALLBACK === 'true' || process.env.NODE_ENV !== 'production';
+    if (allowFallback) {
+      console.warn(`[Database] Notice: Falling back to zero-config JSON database storage (server/data/db.json).`);
+      process.env.DB_FALLBACK = 'true';
+    } else {
+      console.error(`[Database] Fatal: MongoDB connection required but unavailable (ALLOW_JSON_FALLBACK is not enabled).`);
+      throw err;
+    }
   }
 }
 
