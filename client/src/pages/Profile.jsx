@@ -7,10 +7,10 @@ export default function Profile() {
   const { user, refreshUser } = useAuth();
 
   const [studentId, setStudentId] = useState('');
-  const [department, setDepartment] = useState('Computer Science & Engineering');
-  const [batch, setBatch] = useState('42-B1');
-  const [section, setSection] = useState('B1');
-  const [careerInterests, setCareerInterests] = useState('Full-Stack Development, Backend Engineering, Cloud');
+  const [department, setDepartment] = useState('');
+  const [batch, setBatch] = useState('');
+  const [section, setSection] = useState('');
+  const [careerInterests, setCareerInterests] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -28,11 +28,13 @@ export default function Profile() {
         const p = res.data.profile;
         if (p) {
           setStudentId(p.studentId || '');
-          setDepartment(p.department || 'Computer Science & Engineering');
-          setBatch(p.batch || '42-B1');
-          setSection(p.section || 'B1');
+          setDepartment(p.department || '');
+          setBatch(p.batch || '');
+          setSection(p.section || '');
           if (Array.isArray(p.careerInterests)) {
             setCareerInterests(p.careerInterests.join(', '));
+          } else {
+            setCareerInterests(p.careerInterests || '');
           }
         }
       }
@@ -78,7 +80,7 @@ export default function Profile() {
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">Student Profile</h1>
         <p className="text-xs text-slate-400 mt-1">
-          Manage your academic enrollment, university department, and career aspirations (FR-02).
+          Manage your academic enrollment, university department, and career aspirations.
         </p>
       </div>
 

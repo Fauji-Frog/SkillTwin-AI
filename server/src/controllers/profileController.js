@@ -19,9 +19,9 @@ exports.getProfile = async (req, res, next) => {
           user: { name: user?.name, email: user?.email },
           profile: profile || {
             studentId: '',
-            department: 'Computer Science & Engineering',
-            batch: '42-B1',
-            section: 'B1',
+            department: '',
+            batch: '',
+            section: '',
             careerInterests: []
           }
         }

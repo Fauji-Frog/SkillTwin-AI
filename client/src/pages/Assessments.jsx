@@ -104,7 +104,7 @@ export default function Assessments() {
           <span>Skill Assessments &amp; Proficiency Estimation</span>
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Take standard multiple-choice assessments to verify your skills and compute estimated proficiency levels (FR-14 to FR-16).
+          Take standard multiple-choice assessments to verify your skills and compute estimated proficiency levels.
         </p>
       </div>
 
@@ -231,7 +231,7 @@ export default function Assessments() {
         </div>
       )}
 
-      {/* Quiz Result View (FR-15, FR-16) */}
+      {/* Quiz Result View */}
       {quizResult && (
         <div className="bg-[#121822] border border-[#1E293B] rounded-2xl p-6 sm:p-8 space-y-6">
           {/* Result Header Badge */}
@@ -280,7 +280,7 @@ export default function Assessments() {
             </div>
           </div>
 
-          {/* Question Breakdown Feedback (FR-15) */}
+          {/* Question Breakdown Feedback */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Answer Review &amp; Explanations
@@ -337,7 +337,7 @@ export default function Assessments() {
               onClick={() => startQuiz(activeQuiz.id)}
               className="px-4 py-2 rounded-xl bg-[#A3E635] text-black font-bold text-xs hover:bg-[#BEF264]"
             >
-              Retake This Quiz (FR-20)
+              Retake This Quiz
             </button>
           </div>
         </div>

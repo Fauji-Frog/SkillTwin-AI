@@ -192,7 +192,7 @@ export default function Register() {
               </div>
             </div>
 
-            {/* Live Password Criteria Badges (FR-01 Proper Input Validation) */}
+            {/* Live Password Criteria Badges */}
             <div className="bg-[#0A0E13] p-3 rounded-xl border border-[#1A232E] space-y-1.5 text-[11px]">
               <div className="text-slate-400 font-medium mb-1">Security requirements:</div>
               <div className="grid grid-cols-2 gap-1.5">

@@ -39,7 +39,7 @@ export default function JobCirculars() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Review & Confirmation State (FR-09)
+  // Review & Confirmation State
   const [extractedReview, setExtractedReview] = useState(null);
   const [selectedSkillIds, setSelectedSkillIds] = useState(new Set());
 
@@ -97,7 +97,7 @@ export default function JobCirculars() {
       }
 
       if (res.success) {
-        setSuccess('Circular parsed! Please review and confirm the required skills below (FR-09).');
+        setSuccess('Circular parsed! Please review and confirm the required skills below.');
         setExtractedReview(res.data);
 
         // Pre-select all detected skills for convenience, requiring user to review and confirm
@@ -139,7 +139,7 @@ export default function JobCirculars() {
     setSelectedSkillIds(new Set());
   };
 
-  // FR-09: Explicitly confirm requirements and then run gap analysis
+  // Explicitly confirm requirements and then run gap analysis
   async function handleConfirmAndAnalyze() {
     if (!extractedReview?.circular) return;
     const circularId = extractedReview.circular.id || extractedReview.circular._id;
@@ -153,12 +153,12 @@ export default function JobCirculars() {
     setError('');
 
     try {
-      // 1. Save explicit user confirmation (FR-09)
+      // 1. Save explicit user confirmation
       await api.post(`/job-circulars/${circularId}/confirm-requirements`, {
         confirmedSkillIds: Array.from(selectedSkillIds)
       });
 
-      // 2. Run Evidence-Grounded Gap Analysis (FR-10 to FR-13)
+      // 2. Run Evidence-Grounded Gap Analysis
       setAnalyzingId(circularId);
       const res = await api.post(`/job-circulars/${circularId}/analyze`);
       if (res.success && res.data) {
@@ -196,7 +196,7 @@ export default function JobCirculars() {
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">Job Circular Matching</h1>
         <p className="text-xs text-slate-400 mt-1">
-          Submit job descriptions via text or PDF/DOCX file. Review AI-extracted skills and generate evidence-grounded gap reports (FR-08 &amp; FR-09).
+          Submit job descriptions via text or PDF/DOCX file. Review AI-extracted skills and generate evidence-grounded gap reports.
         </p>
       </div>
 
@@ -351,14 +351,14 @@ export default function JobCirculars() {
           </div>
         </form>
 
-        {/* FR-09: Explicit Skill Review & Confirmation Box */}
+        {/* Explicit Skill Review & Confirmation Box */}
         {extractedReview && (
           <div className="mt-6 pt-5 border-t border-[#1E293B] bg-[#0E1318] p-5 rounded-xl border border-[#1E293B] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-white flex items-center gap-2">
                   <CheckSquare className="w-4 h-4 text-[#A3E635]" />
-                  <span>Review &amp; Confirm Required Skills (FR-09)</span>
+                  <span>Review &amp; Confirm Required Skills</span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Confirm which skills are truly required for <span className="text-white font-semibold">{extractedReview.circular?.title}</span> before running the gap report.

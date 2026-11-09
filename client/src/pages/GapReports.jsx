@@ -50,7 +50,7 @@ export default function GapReports() {
     }
   }
 
-  // FR-24: Student Flagging with Persistent Reason (Match score remains unchanged!)
+  // Student Flagging with Persistent Reason (Match score remains unchanged!)
   async function handleFlag(itemId) {
     if (!flagReason || flagReason.trim().length === 0) return;
     setSubmittingFlag(true);
@@ -120,7 +120,7 @@ export default function GapReports() {
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Skill-Gap Analysis</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Evidence-grounded comparison between job requirements and verified student artifacts (FR-10 to FR-13, FR-24).
+            Evidence-grounded comparison between job requirements and verified student artifacts.
           </p>
         </div>
 
@@ -285,7 +285,7 @@ export default function GapReports() {
                               ? 'bg-rose-500/10 border-rose-500/20 text-rose-300'
                               : 'bg-[#141B24] border-[#202B38] text-slate-400 hover:text-[#A3E635]'
                           }`}
-                          title="Flag evaluation for review (FR-24)"
+                          title="Flag evaluation for review"
                         >
                           <Flag className="w-3 h-3" />
                           <span>{item.isFlagged ? 'Review Flag' : 'Flag'}</span>
@@ -309,7 +309,7 @@ export default function GapReports() {
                       </div>
                     )}
 
-                    {/* Supporting Evidence Citations (FR-13 RAG Grounding) */}
+                    {/* Supporting Evidence Citations (Evidence Grounding) */}
                     {item.supportingEvidence && item.supportingEvidence.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-[#1E293B] space-y-2">
                         <div className="text-[10px] uppercase font-bold text-[#A3E635] tracking-wider flex items-center gap-1">
@@ -330,12 +330,12 @@ export default function GapReports() {
                       </div>
                     )}
 
-                    {/* Inline Flag Form (FR-24) */}
+                    {/* Inline Flag Form */}
                     {flaggingItemId === itemId && (
                       <div className="mt-3 p-3.5 bg-[#161414] border border-[#3D2525] rounded-xl space-y-2.5">
                         <div className="text-xs font-semibold text-rose-300 flex items-center gap-1.5">
                           <Flag className="w-3.5 h-3.5" />
-                          <span>Flag this evaluation for human review (FR-24)</span>
+                          <span>Flag this evaluation for human review</span>
                         </div>
                         <p className="text-[11px] text-slate-400">
                           Explain why you believe this assessment does not accurately reflect your verified competencies:

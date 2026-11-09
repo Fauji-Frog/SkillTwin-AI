@@ -98,7 +98,7 @@ export default function LearningPath() {
             <span>Personalized Learning Path</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Tailored curriculum automatically generated to bridge your verified skill-gaps (FR-18, FR-19).
+            Tailored curriculum automatically generated to bridge your verified skill-gaps.
           </p>
         </div>
 
@@ -236,13 +236,13 @@ export default function LearningPath() {
                           {step.description}
                         </p>
 
-                        {/* Practice Mini-Project Task (FR-19) */}
+                        {/* Practice Mini-Project Task */}
                         {step.practiceTask && (
                           <div className="mt-3 p-3 rounded-xl bg-[#0A0E13] border border-[#1A232E] flex items-start gap-2.5">
                             <Code className="w-4 h-4 text-[#A3E635] shrink-0 mt-0.5" />
                             <div>
                               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Practice Project Task (FR-19)
+                                Practice Project Task
                               </div>
                               <div className="text-xs text-slate-300 font-mono mt-0.5 leading-snug">
                                 {step.practiceTask}
