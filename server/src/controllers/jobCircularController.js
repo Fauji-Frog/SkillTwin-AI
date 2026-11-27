@@ -9,6 +9,7 @@ const StudentSkill = require('../models/StudentSkill');
 const Evidence = require('../models/Evidence');
 const EvidenceChunk = require('../models/EvidenceChunk');
 const { extractTextFromFile, extractSkillsFromText, runGapAnalysis } = require('../services/aiService');
+const { ensureSkillsCatalog } = require('../services/skillCatalogService');
 const { readDb, writeDb, generateId } = require('../services/store');
 
 const isMongoReady = () => mongoose.connection && mongoose.connection.readyState === 1 && process.env.DB_FALLBACK !== 'true';
@@ -53,6 +54,8 @@ exports.submitCircular = async (req, res, next) => {
         }
       });
     }
+
+    await ensureSkillsCatalog();
 
     if (!isMongoReady()) {
       const db = readDb();
@@ -143,13 +146,32 @@ exports.submitCircular = async (req, res, next) => {
 exports.getCirculars = async (req, res, next) => {
   try {
     const profileId = req.user.profileId;
+    await ensureSkillsCatalog();
 
     if (!isMongoReady()) {
       const db = readDb();
+      let dbChanged = false;
       const list = (db.jobCirculars || [])
         .filter((c) => c.studentProfileId === profileId)
         .map((c) => {
-          const reqs = (db.jobRequirements || []).filter((r) => r.circularId === (c.id || c._id));
+          let reqs = (db.jobRequirements || []).filter((r) => r.circularId === (c.id || c._id));
+          if (reqs.length === 0 && c.rawText) {
+            const detected = extractSkillsFromText(c.rawText, db.skills || []);
+            reqs = detected.map((s) => ({
+              id: generateId(),
+              _id: generateId(),
+              circularId: c.id || c._id,
+              skillId: s.skillId,
+              skillName: s.skillName,
+              category: s.category || 'Technical',
+              importance: 'required',
+              confirmed: false,
+              createdAt: new Date().toISOString()
+            }));
+            if (!db.jobRequirements) db.jobRequirements = [];
+            db.jobRequirements.push(...reqs);
+            dbChanged = true;
+          }
           return {
             ...c,
             totalSkills: reqs.length,
@@ -157,13 +179,30 @@ exports.getCirculars = async (req, res, next) => {
           };
         })
         .reverse();
+
+      if (dbChanged) writeDb(db);
       return res.status(200).json({ success: true, data: list });
     }
 
     const circulars = await JobCircular.find({ studentProfileId: profileId }).sort({ createdAt: -1 });
     const formatted = await Promise.all(
       circulars.map(async (c) => {
-        const reqs = await JobRequirement.find({ circularId: c._id });
+        let reqs = await JobRequirement.find({ circularId: c._id });
+        if (reqs.length === 0 && c.rawText) {
+          const catalog = await Skill.find({ isActive: true });
+          const detected = extractSkillsFromText(c.rawText, catalog);
+          if (detected.length > 0) {
+            const reqDocs = detected.map((s) => ({
+              circularId: c._id,
+              skillId: s.skillId,
+              skillName: s.skillName,
+              category: s.category || 'Technical',
+              importance: 'required',
+              confirmed: false
+            }));
+            reqs = await JobRequirement.insertMany(reqDocs);
+          }
+        }
         return {
           id: c._id.toString(),
           _id: c._id.toString(),
@@ -192,6 +231,8 @@ exports.getCircularById = async (req, res, next) => {
     const profileId = req.user.profileId;
     const { id } = req.params;
 
+    await ensureSkillsCatalog();
+
     if (!isMongoReady()) {
       const db = readDb();
       const circular = (db.jobCirculars || []).find(
@@ -201,9 +242,28 @@ exports.getCircularById = async (req, res, next) => {
         return res.status(404).json({ success: false, error: { message: 'Job circular not found' } });
       }
 
-      const requirements = (db.jobRequirements || []).filter(
+      let requirements = (db.jobRequirements || []).filter(
         (r) => r.circularId === (circular.id || circular._id)
       );
+
+      // If requirements were empty (e.g. submitted when skills catalog was empty), extract them now
+      if (requirements.length === 0 && circular.rawText) {
+        const detected = extractSkillsFromText(circular.rawText, db.skills || []);
+        requirements = detected.map((s) => ({
+          id: generateId(),
+          _id: generateId(),
+          circularId: circular.id || circular._id,
+          skillId: s.skillId,
+          skillName: s.skillName,
+          category: s.category || 'Technical',
+          importance: 'required',
+          confirmed: false,
+          createdAt: new Date().toISOString()
+        }));
+        if (!db.jobRequirements) db.jobRequirements = [];
+        db.jobRequirements.push(...requirements);
+        writeDb(db);
+      }
 
       return res.status(200).json({
         success: true,
@@ -219,7 +279,22 @@ exports.getCircularById = async (req, res, next) => {
       return res.status(404).json({ success: false, error: { message: 'Job circular not found' } });
     }
 
-    const requirements = await JobRequirement.find({ circularId: id });
+    let requirements = await JobRequirement.find({ circularId: id });
+    if (requirements.length === 0 && circular.rawText) {
+      const catalog = await Skill.find({ isActive: true });
+      const detected = extractSkillsFromText(circular.rawText, catalog);
+      if (detected.length > 0) {
+        const reqDocs = detected.map((s) => ({
+          circularId: circular._id,
+          skillId: s.skillId,
+          skillName: s.skillName,
+          category: s.category || 'Technical',
+          importance: 'required',
+          confirmed: false
+        }));
+        requirements = await JobRequirement.insertMany(reqDocs);
+      }
+    }
 
     res.status(200).json({
       success: true,

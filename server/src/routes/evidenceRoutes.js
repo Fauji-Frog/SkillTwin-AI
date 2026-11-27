@@ -2,7 +2,13 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { uploadEvidence, getEvidenceList, deleteEvidence } = require('../controllers/evidenceController');
+const {
+  uploadEvidence,
+  getEvidenceList,
+  getEvidenceById,
+  deleteEvidence,
+  semanticSearch
+} = require('../controllers/evidenceController');
 const { authenticate } = require('../middleware/auth');
 const env = require('../config/env');
 
@@ -31,6 +37,8 @@ const router = express.Router();
 
 router.post('/evidence', authenticate, upload.single('file'), uploadEvidence);
 router.get('/evidence', authenticate, getEvidenceList);
+router.get('/evidence/search', authenticate, semanticSearch);
+router.get('/evidence/:id', authenticate, getEvidenceById);
 router.delete('/evidence/:id', authenticate, deleteEvidence);
 
 module.exports = router;

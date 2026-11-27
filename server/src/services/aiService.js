@@ -1,9 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-const Skill = require('../models/Skill');
+const crypto = require('crypto');
+const pdf = require('pdf-parse');
+const mammoth = require('mammoth');
 
 /**
- * Extracts plain text from an uploaded evidence file
+ * Extracts plain text from an uploaded evidence or circular file
+ * Supports: PDF, DOCX, TXT, JS, JSX, TS, TSX, PY, JAVA, SQL, JSON, MD, HTML, CSS, C, CPP
  */
 const extractTextFromFile = async (filePath, mimeType, extension) => {
   try {
@@ -11,49 +14,79 @@ const extractTextFromFile = async (filePath, mimeType, extension) => {
       return { status: 'failed', text: '', message: 'File not found on disk' };
     }
 
-    // Text & code files can be read directly
-    const textExtensions = ['.txt', '.js', '.py', '.java', '.sql', '.cpp', '.c', '.cs', '.html', '.css', '.json', '.md'];
-    if (textExtensions.includes(extension.toLowerCase())) {
-      const text = fs.readFileSync(filePath, 'utf-8');
-      if (text.trim().length < 20) {
-        return { status: 'failed', text, message: 'Extracted text is too short (< 20 characters)' };
+    const ext = (extension || path.extname(filePath)).toLowerCase();
+
+    // 1. Text & Source Code Files
+    const codeExtensions = [
+      '.txt', '.js', '.jsx', '.ts', '.tsx', '.py', '.java',
+      '.sql', '.cpp', '.c', '.cs', '.html', '.css', '.json', '.md'
+    ];
+    if (codeExtensions.includes(ext)) {
+      const rawText = await fs.promises.readFile(filePath, 'utf-8');
+      const text = rawText.trim();
+      if (text.length < 10) {
+        return { status: 'failed', text, message: 'Extracted text is too short (< 10 characters)' };
       }
       return { status: 'processed', text, message: null };
     }
 
-    // Binary / doc files - read readable strings buffer extraction for local dev/demo
-    const buffer = fs.readFileSync(filePath);
-    // Extract ascii/utf8 strings from binary buffer
-    const text = buffer.toString('utf-8').replace(/[^\x20-\x7E\t\r\n]/g, ' ');
-    const cleanText = text.replace(/\s+/g, ' ').trim();
-
-    if (cleanText.length < 20) {
-      // If unsupported image or unparseable format
-      if (['.png', '.jpg', '.jpeg'].includes(extension.toLowerCase())) {
-        return { status: 'unsupported', text: '', message: 'Image evidence OCR is not supported. Please upload PDF, DOCX, or code files.' };
+    // 2. PDF Documents
+    if (ext === '.pdf' || mimeType === 'application/pdf') {
+      try {
+        const buffer = await fs.promises.readFile(filePath);
+        const pdfData = await pdf(buffer);
+        const text = (pdfData.text || '').replace(/\s+/g, ' ').trim();
+        if (text.length < 10) {
+          return { status: 'failed', text, message: 'Could not extract readable text from PDF (empty or scanned image)' };
+        }
+        return { status: 'processed', text, message: null };
+      } catch (pdfErr) {
+        // Fallback for encrypted/corrupt PDFs
+        return { status: 'failed', text: '', message: `PDF parsing error: ${pdfErr.message}` };
       }
-      return { status: 'failed', text: '', message: 'Could not extract valid text from file' };
     }
 
-    return { status: 'processed', text: cleanText, message: null };
-  } catch (error) {
-    return { status: 'failed', text: '', message: error.message };
+    // 3. DOCX Documents
+    if (ext === '.docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      try {
+        const result = await mammoth.extractRawText({ path: filePath });
+        const text = (result.value || '').replace(/\s+/g, ' ').trim();
+        if (text.length < 10) {
+          return { status: 'failed', text, message: 'DOCX file contains no readable text' };
+        }
+        return { status: 'processed', text, message: null };
+      } catch (docxErr) {
+        return { status: 'failed', text: '', message: `DOCX parsing error: ${docxErr.message}` };
+      }
+    }
+
+    // Unsupported format
+    return {
+      status: 'unsupported',
+      text: '',
+      message: `Unsupported file format '${ext}'. Please upload PDF, DOCX, TXT, or source code files.`
+    };
+  } catch (err) {
+    return { status: 'failed', text: '', message: err.message };
   }
 };
 
 /**
- * Splits text into chunks (~800 characters)
+ * Splits text into chunks (~500 characters with 50 characters overlap)
  */
-const chunkText = (text, chunkSize = 800, overlap = 100) => {
+const chunkText = (text, chunkSize = 500, overlap = 50) => {
   const chunks = [];
-  if (!text) return chunks;
+  if (!text || typeof text !== 'string') return chunks;
+
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return chunks;
 
   let start = 0;
   let index = 0;
 
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length);
-    const chunkContent = text.substring(start, end).trim();
+  while (start < clean.length) {
+    const end = Math.min(start + chunkSize, clean.length);
+    const chunkContent = clean.substring(start, end).trim();
     if (chunkContent.length > 0) {
       chunks.push({
         index,
@@ -61,6 +94,7 @@ const chunkText = (text, chunkSize = 800, overlap = 100) => {
       });
       index++;
     }
+    if (end >= clean.length) break;
     start += (chunkSize - overlap);
   }
 
@@ -68,36 +102,43 @@ const chunkText = (text, chunkSize = 800, overlap = 100) => {
 };
 
 /**
- * Extracts required skills from a job circular text against the master catalog
+ * Extracts skills from job text using word-boundary matching against the catalog
  */
-const extractSkillsFromJobText = async (text) => {
-  const allSkills = await Skill.find({ isActive: true });
-  const matched = [];
+const extractSkillsFromText = (text, skillsCatalog = []) => {
+  if (!text || typeof text !== 'string') return [];
   const lowerText = text.toLowerCase();
+  const matched = [];
+  const seenIds = new Set();
 
-  for (const skill of allSkills) {
+  for (const skill of skillsCatalog) {
+    const sId = (skill.id || skill._id || '').toString();
+    if (seenIds.has(sId)) continue;
+
     const terms = [skill.name, ...(skill.synonyms || [])];
     let isFound = false;
-    let foundTerm = skill.name;
+    let matchedTerm = skill.name;
 
     for (const term of terms) {
-      // Word boundary match
+      if (!term) continue;
       const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Accurate word boundary regex supporting symbols like C#, C++, Node.js
       const regex = new RegExp(`(^|[^a-zA-Z0-9#+])${escaped}([^a-zA-Z0-9#+]|$)`, 'i');
       if (regex.test(lowerText)) {
         isFound = true;
-        foundTerm = term;
+        matchedTerm = term;
         break;
       }
     }
 
     if (isFound) {
+      seenIds.add(sId);
       matched.push({
-        skillId: skill._id,
-        name: skill.name,
-        category: skill.category,
-        matchedTerm: foundTerm,
-        confidence: 0.95
+        skillId: skill.id || skill._id,
+        skillName: skill.name,
+        category: skill.category || 'Technical',
+        matchedTerm,
+        importance: 'required',
+        confirmed: false // Default to unconfirmed per FR-09
       });
     }
   }
@@ -107,77 +148,157 @@ const extractSkillsFromJobText = async (text) => {
 
 /**
  * Core Gap Analysis Engine
- * Compares job requirements with student's recorded skills and verified evidence
+ * Searches both explicit skill tags AND actual extracted evidence text chunks
  */
-const runGapAnalysis = async (requirements, studentSkills, studentEvidences) => {
+const runGapAnalysis = ({
+  requirements = [],
+  studentSkills = [],
+  studentEvidences = [],
+  evidenceChunks = []
+}) => {
+  const startTime = Date.now();
   const gapItems = [];
   let matchedCount = 0;
   let partialCount = 0;
-  let missingEvidenceCount = 0;
+  let missingCount = 0;
   let gapCount = 0;
 
-  const skillMap = new Map();
-  studentSkills.forEach(ss => {
-    skillMap.set(ss.skillId.toString(), ss);
-  });
-
-  const evidenceMap = new Map();
-  studentEvidences.forEach(ev => {
-    const sid = ev.skillId.toString();
-    if (!evidenceMap.has(sid)) {
-      evidenceMap.set(sid, []);
-    }
-    evidenceMap.get(sid).push(ev);
+  // Map of student's claimed skills
+  const studentSkillMap = new Map();
+  studentSkills.forEach((ss) => {
+    const sId = (ss.skillId?._id || ss.skillId?.id || ss.skillId || '').toString();
+    studentSkillMap.set(sId, ss);
   });
 
   for (const req of requirements) {
-    const skillIdStr = req.skillId._id ? req.skillId._id.toString() : req.skillId.toString();
-    const skillName = req.skillId.name || req.matchedTerm;
-    const recorded = skillMap.get(skillIdStr);
-    const evidences = evidenceMap.get(skillIdStr) || [];
-    const validEvidence = evidences.find(e => e.status === 'processed');
+    const reqSkillId = (req.skillId?._id || req.skillId?.id || req.skillId || '').toString();
+    const skillName = req.skillName || req.name || 'Required Skill';
+    const studentSkill = studentSkillMap.get(reqSkillId);
+    const studentLevel = studentSkill ? (studentSkill.level || 'Beginner') : 'None';
+
+    // 1. Check directly tagged evidence
+    const directlyTagged = studentEvidences.filter((e) => {
+      const eSkillId = (e.skillId?._id || e.skillId?.id || e.skillId || '').toString();
+      return eSkillId === reqSkillId && e.status === 'processed';
+    });
+
+    // 2. Search actual extracted text and EvidenceChunk content across all student evidences
+    const contentMatchedEvidences = [];
+    const skillTerms = [skillName.toLowerCase()];
+    if (req.synonyms && Array.isArray(req.synonyms)) {
+      req.synonyms.forEach(s => skillTerms.push(s.toLowerCase()));
+    }
+
+    // Search evidence chunks
+    for (const ev of studentEvidences) {
+      if (ev.status !== 'processed') continue;
+      const evId = (ev.id || ev._id || '').toString();
+
+      // Find chunks belonging to this evidence
+      const chunks = evidenceChunks.filter(c => (c.evidenceId || '').toString() === evId);
+      let foundSnippet = '';
+
+      for (const chunk of chunks) {
+        const chunkLower = (chunk.text || '').toLowerCase();
+        for (const term of skillTerms) {
+          const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (regex.test(chunkLower)) {
+            foundSnippet = chunk.text;
+            break;
+          }
+        }
+        if (foundSnippet) break;
+      }
+
+      // If no chunk match, check ev.extractedText
+      if (!foundSnippet && ev.extractedText) {
+        const textLower = ev.extractedText.toLowerCase();
+        for (const term of skillTerms) {
+          const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          if (regex.test(textLower)) {
+            // grab a 150-char window around the match
+            const idx = textLower.indexOf(term);
+            const start = Math.max(0, idx - 40);
+            const end = Math.min(ev.extractedText.length, idx + 100);
+            foundSnippet = ev.extractedText.substring(start, end).trim();
+            break;
+          }
+        }
+      }
+
+      if (foundSnippet) {
+        contentMatchedEvidences.push({
+          evidenceId: evId,
+          title: ev.title || ev.originalName,
+          snippet: foundSnippet,
+          confidence: 0.92
+        });
+      }
+    }
+
+    // Combine tagged and content-matched evidence (avoid duplicates)
+    const combinedSupporting = [...contentMatchedEvidences];
+    for (const tagged of directlyTagged) {
+      const tId = (tagged.id || tagged._id || '').toString();
+      if (!combinedSupporting.some(s => s.evidenceId === tId)) {
+        combinedSupporting.push({
+          evidenceId: tId,
+          title: tagged.title || tagged.originalName,
+          snippet: tagged.description || `Tagged in evidence metadata (${tagged.title})`,
+          confidence: 0.70
+        });
+      }
+    }
+
+    const hasContentMatch = contentMatchedEvidences.length > 0;
+    const hasTaggedEvidence = directlyTagged.length > 0;
 
     let status = 'gap';
-    let studentLevel = 'None';
-    let supportingEvidenceId = null;
-    let evidenceSnippet = null;
     let reason = '';
 
-    if (recorded && validEvidence) {
-      // Has skill AND verified evidence
-      studentLevel = recorded.level || 'Beginner';
-      supportingEvidenceId = validEvidence._id;
-      evidenceSnippet = validEvidence.description || `Verified via ${validEvidence.title}`;
-
+    // FR-13: Grounding Rule - Do NOT mark matched solely on metadata tags without extracted content proof!
+    if (studentSkill && hasContentMatch) {
       if (studentLevel === 'Advanced' || studentLevel === 'Intermediate') {
         status = 'matched';
         matchedCount++;
-        reason = `Strong match: Demonstrated ${studentLevel} proficiency with verified evidence (${validEvidence.title}).`;
+        reason = `Strong match: Recorded at ${studentLevel} level and substantiated by ${contentMatchedEvidences.length} verified evidence artifact(s) with extracted content proof.`;
       } else {
         status = 'partial';
         partialCount++;
-        reason = `Partial match: Recorded as Beginner with verified evidence (${validEvidence.title}). Consider strengthening toward Intermediate.`;
+        reason = `Partial match: Recorded at ${studentLevel} level with practical extracted content proof.`;
       }
-    } else if (recorded && !validEvidence) {
-      // Has skill BUT no valid evidence (Hard rule: missing evidence)
-      studentLevel = recorded.level || 'Beginner';
+    } else if (studentSkill && hasTaggedEvidence && !hasContentMatch) {
+      // Tagged in metadata only, but keyword proof not found in extracted text
+      status = 'partial';
+      partialCount++;
+      reason = `Unverified match: Skill is tagged in evidence metadata (${directlyTagged[0].title}), but explicit keyword proof was not found in extracted text.`;
+    } else if (studentSkill && !hasContentMatch && !hasTaggedEvidence) {
       status = 'missing_evidence';
-      missingEvidenceCount++;
-      reason = `Skill recorded as ${studentLevel}, but no verified evidence is attached yet. Upload project code or lab proof to claim this skill.`;
+      missingCount++;
+      reason = `Skill recorded at ${studentLevel} level, but no verified evidence file substantiates it. Upload proof to substantiate this competency.`;
+    } else if (!studentSkill && hasContentMatch) {
+      status = 'partial';
+      partialCount++;
+      reason = `Skill demonstrated in verified project artifacts (${contentMatchedEvidences[0].title}), but not explicitly tracked in student skill profile.`;
     } else {
-      // Skill not recorded at all
       status = 'gap';
       gapCount++;
-      reason = `Skill gap: ${skillName} is required by this job circular but is not in your recorded skill profile.`;
+      reason = `Skill required by circular is missing from your recorded skills and no project artifacts prove it.`;
     }
 
+    const itemId = crypto.randomBytes(12).toString('hex');
     gapItems.push({
-      skillId: req.skillId._id || req.skillId,
+      id: itemId,
+      _id: itemId,
+      skillId: reqSkillId,
+      skillName,
+      category: req.category || 'Technical',
       status,
       studentLevel,
-      supportingEvidenceId,
-      evidenceSnippet,
-      reason
+      supportingEvidence: combinedSupporting,
+      reason,
+      isFlagged: false,
+      flagReason: ''
     });
   }
 
@@ -186,23 +307,23 @@ const runGapAnalysis = async (requirements, studentSkills, studentEvidences) => 
     ? Math.min(100, Math.round(((matchedCount * 1.0 + partialCount * 0.5) / totalRequired) * 100))
     : 0;
 
-  let summary = `Your skill match score for this position is ${matchScore}%. You have ${matchedCount} verified skill(s) ready, ${partialCount} partial match(es), ${missingEvidenceCount} skill(s) pending evidence proof, and ${gapCount} skill gap(s).`;
+  const durationMs = Date.now() - startTime;
 
   return {
     matchScore,
     totalRequired,
     matchedCount,
     partialCount,
-    missingEvidenceCount,
+    missingCount,
     gapCount,
-    summary,
-    gapItems
+    items: gapItems,
+    durationMs
   };
 };
 
 module.exports = {
   extractTextFromFile,
   chunkText,
-  extractSkillsFromJobText,
+  extractSkillsFromText,
   runGapAnalysis
 };

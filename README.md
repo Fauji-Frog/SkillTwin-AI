@@ -36,3 +36,15 @@ To be updated as development progresses.
 
 Currently under development as an academic Capstone Project.
 
+
+
+## Authentication Module (FR-01)
+- **User Registration**: Enforces valid full name, university email format, strong password (8+ characters, uppercase, lowercase, numbers, and special characters), password confirmation match, student ID, and academic department.
+- **Login Functionality**: Clean zero-autofill login form with `autoComplete="off"` and `autoComplete="new-password"`, non-standard DOM input identifiers, and togglable show/hide password visibility.
+- **Secure Password Handling**: Passwords are salted and hashed with bcrypt (10 rounds). No credentials or secrets are hardcoded in source code; seed credentials use environment variables (`SEED_STUDENT_PASSWORD` / `SEED_DEFAULT_PASSWORD`).
+- **User Isolation**: Every evidence, skill, circular, and report is strictly associated with the authenticated user profile (`req.user.profileId`), guaranteeing independent workspaces.
+
+## Core Feature Implementations (FR-04 to FR-13)
+- **Evidence Upload & Text Extraction (FR-04 to FR-07)**: Real file upload supporting PDF (`pdf-parse`), DOCX (`mammoth`), and text/code files. Chunks stored in `EvidenceChunk` collection, genuine `chunkCount`, evidence deletion cascading to disk, chunks, and reports.
+- **Job Circular Processing (FR-08, FR-09)**: Paste or PDF/DOCX upload, skill catalog keyword extraction with word-boundary matching, default `confirmed: false`, interactive review checklist, and blocked `/analyze` until user explicitly confirms requirements.
+- **Evidence-Grounded Gap Analysis (FR-10 to FR-13, FR-24)**: Matches against actual extracted text chunks (not tags alone), classifications (`matched`, `partial`, `missing_evidence`, `gap`), includes `durationMs`, persistent evidence flagging with non-destructive recalculation.

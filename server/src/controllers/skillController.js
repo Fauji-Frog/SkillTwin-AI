@@ -2,18 +2,44 @@ const mongoose = require('mongoose');
 const Skill = require('../models/Skill');
 const StudentSkill = require('../models/StudentSkill');
 const { readDb, writeDb, generateId } = require('../services/store');
+const { ensureSkillsCatalog, resolveOrCreateSkill } = require('../services/skillCatalogService');
 
 const isMongoReady = () => mongoose.connection && mongoose.connection.readyState === 1 && process.env.DB_FALLBACK !== 'true';
 
 exports.getAllSkills = async (req, res, next) => {
   try {
+    await ensureSkillsCatalog();
+
     if (!isMongoReady()) {
       const db = readDb();
-      return res.status(200).json({ success: true, data: db.skills || [] });
+      const sorted = [...(db.skills || [])]
+        .filter((s) => s.isActive !== false)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      return res.status(200).json({ success: true, data: sorted });
     }
 
     let skills = await Skill.find({ isActive: true }).sort({ name: 1 });
     res.status(200).json({ success: true, data: skills });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.createSkill = async (req, res, next) => {
+  try {
+    const { name, category = 'Custom' } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_SKILL_NAME', message: 'Skill name is required.' }
+      });
+    }
+
+    const resolved = await resolveOrCreateSkill({ skillName: name, category });
+    return res.status(resolved.created ? 201 : 200).json({
+      success: true,
+      data: resolved.skill
+    });
   } catch (err) {
     next(err);
   }
@@ -61,16 +87,27 @@ exports.getStudentSkills = async (req, res, next) => {
 exports.addStudentSkill = async (req, res, next) => {
   try {
     const profileId = req.user.profileId;
-    const { skillId, level = 'Beginner', note = '' } = req.body;
+    const { skillId, skillName, skillCategory, level = 'Beginner', note = '' } = req.body;
 
-    if (!skillId) {
-      return res.status(400).json({ success: false, error: { message: 'skillId is required' } });
+    const resolvedSkill = await resolveOrCreateSkill({
+      skillId,
+      skillName,
+      category: skillCategory
+    });
+
+    if (!resolvedSkill) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Please select a skill or write a skill name.' }
+      });
     }
+
+    const targetSkillId = resolvedSkill.id;
 
     if (!isMongoReady()) {
       const db = readDb();
       const exists = (db.studentSkills || []).some(
-        (ss) => ss.studentProfileId === profileId && (ss.skillId === skillId || ss.skillId === skillId)
+        (ss) => ss.studentProfileId === profileId && ss.skillId === targetSkillId
       );
       if (exists) {
         return res.status(409).json({ success: false, error: { message: 'Skill already added to your profile.' } });
@@ -81,7 +118,7 @@ exports.addStudentSkill = async (req, res, next) => {
         id,
         _id: id,
         studentProfileId: profileId,
-        skillId,
+        skillId: targetSkillId,
         level,
         levelSource: 'self',
         note,
@@ -92,14 +129,14 @@ exports.addStudentSkill = async (req, res, next) => {
       return res.status(201).json({ success: true, data: newSS });
     }
 
-    const existing = await StudentSkill.findOne({ studentProfileId: profileId, skillId });
+    const existing = await StudentSkill.findOne({ studentProfileId: profileId, skillId: targetSkillId });
     if (existing) {
       return res.status(409).json({ success: false, error: { message: 'Skill already added to your profile.' } });
     }
 
     const created = await StudentSkill.create({
       studentProfileId: profileId,
-      skillId,
+      skillId: targetSkillId,
       level,
       levelSource: 'self',
       note

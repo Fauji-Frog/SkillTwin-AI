@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Award, Plus, Trash2, Search, Check, AlertCircle } from 'lucide-react';
 import api from '../api/client';
+import SkillSelector from '../components/SkillSelector';
 
 export default function MySkills() {
   const [catalog, setCatalog] = useState([]);
   const [mySkills, setMySkills] = useState([]);
   const [selectedSkillId, setSelectedSkillId] = useState('');
+  const [customSkillName, setCustomSkillName] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [level, setLevel] = useState('Intermediate');
   const [note, setNote] = useState('');
   const [search, setSearch] = useState('');
@@ -24,9 +27,13 @@ export default function MySkills() {
         api.get('/skills'),
         api.get('/student-skills')
       ]);
-      if (catRes.success) setCatalog(catRes.data);
+      if (catRes.success) {
+        setCatalog(catRes.data);
+        if (catRes.data.length > 0 && !selectedSkillId) {
+          setSelectedSkillId(catRes.data[0]._id || catRes.data[0].id);
+        }
+      }
       if (myRes.success) setMySkills(myRes.data);
-      if (catRes.data.length > 0) setSelectedSkillId(catRes.data[0]._id || catRes.data[0].id);
     } catch (err) {
       setError('Failed to load skills catalog');
     } finally {
@@ -36,20 +43,31 @@ export default function MySkills() {
 
   async function handleAddSkill(e) {
     e.preventDefault();
-    if (!selectedSkillId) return;
+    const useCustom = isCustomMode || catalog.length === 0;
+
+    if (useCustom && !customSkillName.trim()) {
+      setError('Please write a skill name.');
+      return;
+    }
+    if (!useCustom && !selectedSkillId) {
+      setError('Please select a skill or switch to write a custom skill.');
+      return;
+    }
 
     setError('');
     setSuccess('');
 
     try {
-      const res = await api.post('/student-skills', {
-        skillId: selectedSkillId,
-        level,
-        note
-      });
+      const payload = useCustom
+        ? { skillName: customSkillName.trim(), level, note }
+        : { skillId: selectedSkillId, level, note };
+
+      const res = await api.post('/student-skills', payload);
       if (res.success) {
         setSuccess('Skill added to your profile!');
         setNote('');
+        setCustomSkillName('');
+        setIsCustomMode(false);
         loadData();
       }
     } catch (err) {
@@ -105,20 +123,18 @@ export default function MySkills() {
         <form onSubmit={handleAddSkill} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           {/* Select Skill */}
           <div className="md:col-span-1">
-            <label className="block text-[11px] font-medium text-slate-300 mb-1.5">
-              Select Skill
-            </label>
-            <select
-              value={selectedSkillId}
-              onChange={(e) => setSelectedSkillId(e.target.value)}
-              className="w-full bg-[#0A0E13] border border-[#1F2937] text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-[#A3E635]"
-            >
-              {catalog.map((s) => (
-                <option key={s._id || s.id} value={s._id || s.id}>
-                  {s.name} ({s.category})
-                </option>
-              ))}
-            </select>
+            <SkillSelector
+              label="Select Skill"
+              required
+              skills={catalog}
+              selectedSkillId={selectedSkillId}
+              onSelectSkillId={setSelectedSkillId}
+              customSkillName={customSkillName}
+              onCustomSkillNameChange={setCustomSkillName}
+              isCustomMode={isCustomMode}
+              onToggleCustomMode={setIsCustomMode}
+              loading={loading}
+            />
           </div>
 
           {/* Select Level */}

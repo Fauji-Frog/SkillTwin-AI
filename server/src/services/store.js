@@ -15,6 +15,7 @@ const defaultData = {
   skills: [],
   studentSkills: [],
   evidences: [],
+  evidenceChunks: [],
   jobCirculars: [],
   jobRequirements: [],
   reports: []
@@ -27,7 +28,9 @@ function readDb() {
       return defaultData;
     }
     const raw = fs.readFileSync(dataFile, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed.evidenceChunks) parsed.evidenceChunks = [];
+    return parsed;
   } catch (err) {
     return defaultData;
   }

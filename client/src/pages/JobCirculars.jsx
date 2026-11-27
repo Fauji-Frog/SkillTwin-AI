@@ -13,7 +13,8 @@ import {
   CheckSquare,
   Square,
   Clock,
-  Layers
+  Layers,
+  X
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -169,6 +170,35 @@ export default function JobCirculars() {
     } finally {
       setConfirming(false);
       setAnalyzingId(null);
+    }
+  }
+
+  async function handleReviewCircular(circularId) {
+    setError('');
+    try {
+      const res = await api.get(`/job-circulars/${circularId}`);
+      if (res.success && res.data) {
+        setExtractedReview(res.data);
+        const reqs = res.data.requirements || [];
+        const confirmedIds = reqs
+          .filter((r) => r.confirmed)
+          .map((r) => (r.skillId?._id || r.skillId?.id || r.skillId || r.id || r._id).toString());
+
+        if (confirmedIds.length > 0) {
+          setSelectedSkillIds(new Set(confirmedIds));
+        } else {
+          // Pre-select all detected skills for initial review
+          setSelectedSkillIds(
+            new Set(reqs.map((r) => (r.skillId?._id || r.skillId?.id || r.skillId || r.id || r._id).toString()))
+          );
+        }
+
+        setTimeout(() => {
+          document.getElementById('review-skills-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load circular requirements for review.');
     }
   }
 
@@ -353,7 +383,7 @@ export default function JobCirculars() {
 
         {/* Explicit Skill Review & Confirmation Box */}
         {extractedReview && (
-          <div className="mt-6 pt-5 border-t border-[#1E293B] bg-[#0E1318] p-5 rounded-xl border border-[#1E293B] space-y-4">
+          <div id="review-skills-box" className="mt-6 pt-5 border-t border-[#1E293B] bg-[#0E1318] p-5 rounded-xl border border-[#1E293B] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-white flex items-center gap-2">
@@ -380,6 +410,14 @@ export default function JobCirculars() {
                   className="text-slate-400 hover:text-rose-400 underline text-[11px]"
                 >
                   Deselect All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExtractedReview(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1E293B] transition-colors ml-1"
+                  title="Close review box"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -478,20 +516,37 @@ export default function JobCirculars() {
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#141B24] border border-[#202B38] text-slate-300">
                         {circ.company}
                       </span>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#182619] border border-[#2E4A28] text-[#A3E635]">
-                        {circ.confirmedSkills || circ.totalSkills || 0} skills
-                      </span>
+                      {(circ.confirmedSkills || 0) > 0 ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#182619] border border-[#2E4A28] text-[#A3E635]">
+                          {circ.confirmedSkills} confirmed ({circ.totalSkills || circ.confirmedSkills} total)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 flex items-center gap-1">
+                          <span>Review &amp; Confirmation Needed ({circ.totalSkills || 0} skills detected)</span>
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-1 line-clamp-1 max-w-xl">
                       {circ.rawText}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
                     <button
+                      type="button"
+                      onClick={() => handleReviewCircular(circId)}
+                      className="py-1.5 px-3.5 rounded-xl bg-[#141B24] border border-[#202B38] text-slate-300 hover:text-white hover:border-[#A3E635] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                      title="Review and confirm required skills"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-[#A3E635]" />
+                      <span>Review Skills</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => handleDirectAnalyze(circId)}
                       disabled={isAnalyzing}
-                      className="py-1.5 px-4 rounded-xl bg-[#A3E635] text-black text-xs font-bold hover:bg-[#BEF264] flex items-center gap-1.5 shadow-[0_0_15px_rgba(163,230,53,0.25)] disabled:opacity-50"
+                      className="py-1.5 px-4 rounded-xl bg-[#A3E635] text-black text-xs font-bold hover:bg-[#BEF264] flex items-center gap-1.5 shadow-[0_0_15px_rgba(163,230,53,0.25)] disabled:opacity-50 transition-all"
                     >
                       <Play className="w-3 h-3 fill-black" />
                       <span>{isAnalyzing ? 'Analyzing...' : 'Generate Gap Report'}</span>
